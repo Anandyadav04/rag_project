@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Legal Document RAG Intelligence - Upload, analyze, and query legal contracts using AI" />
+  <title>Legal RAG Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">⚖️</span>
+          <h1>Legal RAG Intelligence</h1>
+        </div>
+        <p class="subtitle">Upload contracts · CUAD Analysis · Natural Language Queries</p>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Upload Section -->
+      <section class="card" id="upload-section">
+        <div class="card-header">
+          <span class="card-icon">📄</span>
+          <h2>Upload Document</h2>
+        </div>
+        <form id="upload-form">
+          <div class="file-drop-zone" id="drop-zone">
+            <span class="drop-icon">⬆️</span>
+            <p>Drag & drop a PDF or DOCX here, or click to browse</p>
+            <input type="file" id="file-input" accept=".pdf,.docx" required />
+          </div>
+          <button type="submit" class="btn btn-primary" id="upload-btn">
+            <span class="btn-text">Upload Document</span>
+            <span class="spinner hidden" id="upload-spinner"></span>
+          </button>
+        </form>
+        <p id="upload-status" class="status-msg"></p>
+      </section>
+
+      <!-- Documents List -->
+      <section class="card" id="documents-section">
+        <div class="card-header">
+          <span class="card-icon">📚</span>
+          <h2>Documents</h2>
+          <button class="btn btn-ghost btn-sm" id="refresh-btn" title="Refresh list">🔄</button>
+        </div>
+        <div id="documents-list" class="doc-list">
+          <p class="empty-state">No documents uploaded yet.</p>
+        </div>
+      </section>
+
+      <!-- Analysis Section -->
+      <section class="card hidden" id="analysis-section">
+        <div class="card-header">
+          <span class="card-icon">🔍</span>
+          <h2>CUAD Analysis</h2>
+        </div>
+        <p id="analysis-status" class="status-msg"></p>
+        <div id="analysis-result" class="result-box"></div>
+      </section>
+
+      <!-- Query Section -->
+      <section class="card hidden" id="query-section">
+        <div class="card-header">
+          <span class="card-icon">💬</span>
+          <h2>Ask a Question</h2>
+        </div>
+        <form id="query-form">
+          <input type="text" id="query-input" placeholder="e.g., What is the governing law?" required />
+          <button type="submit" class="btn btn-primary" id="query-btn">
+            <span class="btn-text">Query</span>
+            <span class="spinner hidden" id="query-spinner"></span>
+          </button>
+        </form>
+        <p id="query-status" class="status-msg"></p>
+        <div id="query-result" class="result-box"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Legal RAG Intelligence &middot; Powered by CUAD RoBERTa</p>
+    </footer>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>

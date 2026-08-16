@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded/generated files
+backend/uploads/*
+backend/*.db
+
+# CUAD virtual environment
+cuad/.venv/
+
+# Model/cache files
+.pytest_cache/
+.cache/
+
+# macOS
+.DS_Store
+cuad/train_models/
