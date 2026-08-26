@@ -12,6 +12,9 @@ class Settings(BaseSettings):
         "postgresql://postgres:postgres@localhost:5432/rag_db"
     )
     
+    # LLM Settings
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    
     # Upload Settings
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "uploads")
     MAX_UPLOAD_SIZE_MB: int = 50

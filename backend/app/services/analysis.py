@@ -4,6 +4,7 @@ from app.models.chunk import Chunk
 from app.models.extracted_clause import ExtractedClause
 from app.services.retrieval import retrieval_service
 from app.services.cuad_service import cuad_service
+from app.services.llm_service import llm_service
 import threading
 import re
 
@@ -135,9 +136,16 @@ class AnalysisService:
                     best_answer = answer_result
                     best_chunk = chunk
 
+        chunks_text = "\n\n".join([chunk.text for chunk in top_chunks])
+
         if best_answer:
+            llm_answer = llm_service.generate_legal_answer(
+                query=query, 
+                exact_evidence=best_answer["answer"],
+                chunks_text=chunks_text
+            )
             return {
-                "answer": best_answer["answer"],
+                "answer": llm_answer,
                 "exact_evidence_text": best_answer["answer"],
                 "page_numbers": [best_chunk.page_number] if best_chunk.page_number else [],
                 "supporting_chunk_ids": [best_chunk.id],
@@ -148,8 +156,13 @@ class AnalysisService:
         if top_chunks:
             top_chunk = top_chunks[0]
             fallback_answer = self._extract_most_relevant_sentence(top_chunk.text, query)
+            llm_answer = llm_service.generate_legal_answer(
+                query=query, 
+                exact_evidence=fallback_answer,
+                chunks_text=chunks_text
+            )
             return {
-                "answer": fallback_answer,
+                "answer": llm_answer,
                 "exact_evidence_text": fallback_answer,
                 "page_numbers": [top_chunk.page_number] if top_chunk.page_number else [],
                 "supporting_chunk_ids": [top_chunk.id],

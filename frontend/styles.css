@@ -345,6 +345,303 @@ input[type="text"]::placeholder { color: var(--text-muted); }
   border-radius: 3px;
 }
 
+/* ==============================
+   Answer Card (Query Result)
+   ============================== */
+.answer-card {
+  background: linear-gradient(145deg, rgba(26, 26, 46, 0.95), rgba(15, 15, 30, 0.95));
+  border: 1px solid rgba(108, 92, 231, 0.25);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  animation: answerSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes answerSlideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* -- Answer Section -- */
+.answer-section {
+  padding: 1.5rem 1.75rem;
+  position: relative;
+}
+
+.answer-section::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent-gradient);
+  border-radius: 0 4px 4px 0;
+}
+
+.answer-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.answer-label-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: rgba(108, 92, 231, 0.2);
+  font-size: 0.7rem;
+}
+
+.answer-text {
+  font-size: 1.05rem;
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+/* -- Divider -- */
+.answer-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(108, 92, 231, 0.3), transparent);
+  margin: 0;
+}
+
+/* -- Source Section -- */
+.answer-source {
+  padding: 1.25rem 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.source-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.source-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* -- Supporting Clause -- */
+.answer-clause {
+  padding: 1.25rem 1.75rem;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.clause-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
+}
+
+.clause-text {
+  font-size: 0.88rem;
+  font-style: italic;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  padding-left: 1rem;
+  border-left: 2px solid rgba(108, 92, 231, 0.2);
+}
+
+/* -- Confidence Meter -- */
+.confidence-section {
+  padding: 1rem 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(0, 0, 0, 0.1);
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+.confidence-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.confidence-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.confidence-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--accent-gradient);
+}
+
+.confidence-bar-fill.high    { background: linear-gradient(90deg, #00cec9, #55efc4); }
+.confidence-bar-fill.medium  { background: linear-gradient(90deg, #fdcb6e, #ffeaa7); }
+.confidence-bar-fill.low     { background: linear-gradient(90deg, #ff7675, #fab1a0); }
+
+.confidence-value {
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 42px;
+  text-align: right;
+}
+
+.confidence-value.high   { color: var(--success); }
+.confidence-value.medium { color: var(--warning); }
+.confidence-value.low    { color: var(--danger); }
+
+/* ==============================
+   CUAD Analysis Result Cards
+   ============================== */
+.analysis-results-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.analysis-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: rgba(0, 206, 201, 0.08);
+  border: 1px solid rgba(0, 206, 201, 0.2);
+  border-radius: var(--border-radius-sm);
+  margin-bottom: 0.5rem;
+}
+
+.analysis-summary-icon {
+  font-size: 1.5rem;
+}
+
+.analysis-summary-text {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.analysis-summary-text strong {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.clause-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+  transition: var(--transition);
+  animation: clauseFadeIn 0.4s ease-out both;
+}
+
+.clause-card:hover {
+  border-color: rgba(108, 92, 231, 0.3);
+  background: rgba(108, 92, 231, 0.04);
+}
+
+@keyframes clauseFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.clause-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  background: rgba(108, 92, 231, 0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.clause-category {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.clause-category-icon {
+  font-size: 0.9rem;
+}
+
+.clause-confidence-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.clause-confidence-pill.high   { background: rgba(0, 206, 201, 0.15); color: var(--success); }
+.clause-confidence-pill.medium { background: rgba(253, 203, 110, 0.15); color: var(--warning); }
+.clause-confidence-pill.low    { background: rgba(255, 118, 117, 0.15); color: var(--danger); }
+
+.clause-card-body {
+  padding: 0.85rem 1.1rem;
+}
+
+.clause-extracted-text {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding-left: 0.75rem;
+  border-left: 2px solid rgba(108, 92, 231, 0.2);
+}
+
+.clause-card-footer {
+  padding: 0.5rem 1.1rem 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* -- No results state -- */
+.no-clauses {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--text-muted);
+}
+
+.no-clauses-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
 /* ---- Footer ---- */
 .footer {
   text-align: center;
