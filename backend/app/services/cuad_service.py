@@ -14,9 +14,17 @@ class CUADService:
     def _initialize(self):
         # Resolve the path to the CUAD model
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        model_path = os.path.join(base_dir, "../cuad/train_models/cuad-roberta-base/")
-        model_path = os.path.abspath(model_path)
+        local_model_path = os.path.join(base_dir, "../cuad/train_models/cuad-roberta-base/")
+        local_model_path = os.path.abspath(local_model_path)
         
+        # Check if local model exists, otherwise fallback to Hugging Face Hub
+        if os.path.exists(local_model_path) and os.listdir(local_model_path):
+            model_id_or_path = local_model_path
+            print(f"Loading local CUAD RoBERTa model from {model_id_or_path}...")
+        else:
+            model_id_or_path = "Rakib/roberta-base-on-cuad"
+            print(f"Local model not found. Downloading CUAD model '{model_id_or_path}' from Hugging Face Hub...")
+            
         # Determine the best device
         if torch.cuda.is_available():
             device = "cuda"
@@ -29,8 +37,8 @@ class CUADService:
         try:
             self.qa_pipeline = pipeline(
                 "question-answering", 
-                model=model_path, 
-                tokenizer=model_path, 
+                model=model_id_or_path, 
+                tokenizer=model_id_or_path, 
                 device=device,
                 handle_impossible_answer=True
             )
