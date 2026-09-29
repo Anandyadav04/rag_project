@@ -9,6 +9,16 @@ const statusStyles = {
   loading: 'status status-loading',
 };
 
+const SUGGESTED_QUERIES = [
+  { label: '🏛️ Governing Law', prompt: 'What is the governing law and jurisdiction?' },
+  { label: '🛡️ Liability Cap', prompt: 'What is the limitation of liability cap?' },
+  { label: '⏳ Termination', prompt: 'Under what conditions can the agreement be terminated?' },
+  { label: '💰 Payment Terms', prompt: 'What are the payment terms and invoice due dates?' },
+  { label: '🤝 Indemnification', prompt: 'What are the indemnification obligations?' },
+  { label: '🔄 Renewal Notice', prompt: 'What is the renewal and non-renewal notice period?' },
+  { label: '🔒 Confidentiality', prompt: 'What are the confidentiality obligations and survival period?' },
+];
+
 function App() {
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
@@ -19,6 +29,9 @@ function App() {
   const [queryStatus, setQueryStatus] = useState({ text: '', tone: 'neutral' });
   const [analysisResult, setAnalysisResult] = useState(null);
   const [queryResult, setQueryResult] = useState(null);
+  const [queryHistory, setQueryHistory] = useState([]);
+  const [queryText, setQueryText] = useState('');
+  const [copiedKey, setCopiedKey] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isRunningAnalysis, setIsRunningAnalysis] = useState(false);
   const [isQuerying, setIsQuerying] = useState(false);
@@ -48,6 +61,17 @@ function App() {
     loadDocuments();
   }, []);
 
+  // Auto-select the first completed document if none selected
+  useEffect(() => {
+    if (documents.length > 0 && !selectedDocId) {
+      const activeDoc = documents.find((d) => String(d.status || '').toLowerCase() === 'completed') || documents[0];
+      if (activeDoc) {
+        setSelectedDocId(activeDoc.id);
+        setCurrentDocName(activeDoc.filename);
+      }
+    }
+  }, [documents, selectedDocId]);
+
   useEffect(() => {
     if (!documents.some((doc) => String(doc.status || '').toLowerCase() === 'processing')) {
       return undefined;
@@ -60,16 +84,42 @@ function App() {
     return () => clearInterval(interval);
   }, [documents]);
 
-  useEffect(() => {
-    if (selectedDocId && queryInputRef.current) {
-      queryInputRef.current.focus();
-    }
-  }, [selectedDocId]);
-
   function getStatusLabel(status) {
     const normalized = String(status || 'uploaded').toLowerCase();
     if (normalized === 'ready') return 'Ready';
     return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  }
+
+  function copyToClipboard(text, key) {
+    if (!text) return;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(null), 2000);
+      }).catch(() => {
+        fallbackCopy(text, key);
+      });
+    } else {
+      fallbackCopy(text, key);
+    }
+  }
+
+  function fallbackCopy(text, key) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (err) {
+      console.error('Copy failed: ', err);
+    }
+    document.body.removeChild(textArea);
   }
 
   async function loadDocuments() {
@@ -80,7 +130,8 @@ function App() {
       }
 
       const data = await response.json();
-      setDocuments(Array.isArray(data) ? data : []);
+      const docs = Array.isArray(data) ? data : [];
+      setDocuments(docs);
     } catch (error) {
       setDocuments([]);
       setUploadStatus({
@@ -95,7 +146,7 @@ function App() {
     const file = fileInputRef.current?.files?.[0] || selectedFile;
 
     if (!file) {
-      setUploadStatus({ text: 'Please select a PDF or DOCX file first.', tone: 'error' });
+      setUploadStatus({ text: 'Please select a PDF, DOCX, or TXT file first.', tone: 'error' });
       return;
     }
 
@@ -118,8 +169,9 @@ function App() {
         throw new Error(data.detail || 'Upload failed');
       }
 
+      const uploadedDoc = data.document || data;
       setUploadStatus({
-        text: `Document uploaded: ${data.document?.filename || data.id || 'success'}`,
+        text: `Document uploaded: ${uploadedDoc.filename || data.id || 'success'}`,
         tone: 'success',
       });
 
@@ -128,8 +180,10 @@ function App() {
       }
 
       setSelectedFile(null);
-      const nextDocuments = Array.isArray(documents) ? [data.document, ...documents] : [data.document];
-      setDocuments(nextDocuments);
+      if (uploadedDoc?.id) {
+        setSelectedDocId(uploadedDoc.id);
+        setCurrentDocName(uploadedDoc.filename);
+      }
       await loadDocuments();
     } catch (error) {
       setUploadStatus({ text: `Upload failed: ${error.message}`, tone: 'error' });
@@ -172,28 +226,38 @@ function App() {
     }
   }
 
-  async function submitQuery(event) {
-    event.preventDefault();
+  function handleSelectForQuery(doc) {
+    setSelectedDocId(doc.id);
+    setCurrentDocName(doc.filename);
+    setQueryStatus({ text: `Active target set to "${doc.filename}". Ready for queries.`, tone: 'neutral' });
+    if (queryInputRef.current) {
+      queryInputRef.current.focus();
+      queryInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  async function runQuery(customPrompt) {
+    const promptToRun = (customPrompt || queryText).trim();
+
     if (!selectedDocId) {
       setQueryStatus({ text: 'Select a document before asking a question.', tone: 'error' });
       return;
     }
 
-    const query = event.target.elements.query.value.trim();
-    if (!query) {
+    if (!promptToRun) {
       setQueryStatus({ text: 'Please enter a question to continue.', tone: 'error' });
       return;
     }
 
+    setQueryText(promptToRun);
     setIsQuerying(true);
-    setQueryStatus({ text: 'Searching the document…', tone: 'loading' });
-    setQueryResult(null);
+    setQueryStatus({ text: 'Searching semantic chunks and extracting exact clauses with RoBERTa…', tone: 'loading' });
 
     try {
       const response = await fetch(`${API_BASE}/documents/${selectedDocId}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query: promptToRun }),
       });
 
       const data = await response.json();
@@ -202,8 +266,20 @@ function App() {
         throw new Error(data.detail || 'Query failed');
       }
 
-      setQueryResult(data);
-      setQueryStatus({ text: 'Answer received.', tone: 'success' });
+      const newEntry = {
+        id: Date.now(),
+        query: promptToRun,
+        answer: data.answer || 'No direct answer could be identified.',
+        exact_evidence_text: data.exact_evidence_text || '',
+        confidence: data.confidence ?? 0,
+        page_numbers: data.page_numbers || [],
+        docName: currentDocName || documents.find((d) => d.id === selectedDocId)?.filename || 'Document',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setQueryResult(newEntry);
+      setQueryHistory((prev) => [newEntry, ...prev]);
+      setQueryStatus({ text: 'Answer received with verified citations.', tone: 'success' });
     } catch (error) {
       setQueryStatus({ text: `Query failed: ${error.message}`, tone: 'error' });
     } finally {
@@ -222,14 +298,21 @@ function App() {
         throw new Error(data.detail || 'Unable to remove document');
       }
 
-      setDocuments((currentDocuments) => currentDocuments.filter((doc) => doc.id !== docId));
-
-      if (selectedDocId === docId) {
-        setSelectedDocId(null);
-        setCurrentDocName('');
-        setQueryResult(null);
-        setQueryStatus({ text: 'Document removed. Select another contract to continue.', tone: 'neutral' });
-      }
+      setDocuments((currentDocuments) => {
+        const remaining = currentDocuments.filter((doc) => doc.id !== docId);
+        if (selectedDocId === docId) {
+          if (remaining.length > 0) {
+            setSelectedDocId(remaining[0].id);
+            setCurrentDocName(remaining[0].filename);
+          } else {
+            setSelectedDocId(null);
+            setCurrentDocName('');
+          }
+          setQueryResult(null);
+          setQueryHistory([]);
+        }
+        return remaining;
+      });
 
       setUploadStatus({ text: 'Document removed successfully.', tone: 'success' });
     } catch (error) {
@@ -254,6 +337,7 @@ function App() {
       </header>
 
       <main className="workspace-grid">
+        {/* Upload Contract */}
         <section className="panel panel-surface">
           <div className="panel-header">
             <div className="header-label">
@@ -286,7 +370,7 @@ function App() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.docx"
+                accept=".pdf,.docx,.txt"
                 onChange={(event) => {
                   const file = event.target.files?.[0] || null;
                   setSelectedFile(file);
@@ -297,7 +381,7 @@ function App() {
               />
               <span className="drop-icon">⬆</span>
               <p>{selectedFile ? 'File ready to upload' : 'Drag and drop a contract here or browse a file'}</p>
-              {selectedFile ? <div className="selected-file-pill">{selectedFile.name}</div> : <small>PDF • DOCX</small>}
+              {selectedFile ? <div className="selected-file-pill">{selectedFile.name}</div> : <small>PDF • DOCX • TXT</small>}
             </label>
 
             <button type="submit" className="primary-button" disabled={isUploading}>
@@ -308,6 +392,7 @@ function App() {
           <div className={statusStyles[uploadStatus.tone] || 'status'}>{uploadStatus.text}</div>
         </section>
 
+        {/* Documents Section */}
         <section className="panel panel-surface">
           <div className="panel-header">
             <div className="header-label">
@@ -325,12 +410,13 @@ function App() {
             ) : (
               visibleDocuments.map((doc) => {
                 const status = doc.isPending ? 'ready' : String(doc.status || 'uploaded').toLowerCase();
+                const isSelected = selectedDocId === doc.id;
 
                 return (
-                  <div key={doc.id} className={`document-item ${selectedDocId === doc.id ? 'active' : ''} ${doc.isPending ? 'is-pending' : ''}`}>
+                  <div key={doc.id} className={`document-item ${isSelected ? 'active' : ''} ${doc.isPending ? 'is-pending' : ''}`}>
                     <div className="document-copy">
                       <strong>{doc.filename}</strong>
-                      <span>{doc.total_pages || 0} pages</span>
+                      <span>{doc.total_pages || 0} pages {isSelected ? '• (Active Query Target)' : ''}</span>
                     </div>
 
                     <div className="document-meta">
@@ -339,8 +425,13 @@ function App() {
                         <button type="button" onClick={() => analyzeDocument(doc.id, doc.filename)} disabled={doc.isPending}>
                           Analyze
                         </button>
-                        <button type="button" onClick={() => setSelectedDocId(doc.id)} disabled={doc.isPending}>
-                          Query
+                        <button
+                          type="button"
+                          className={isSelected ? 'active-target-btn' : ''}
+                          onClick={() => handleSelectForQuery(doc)}
+                          disabled={doc.isPending}
+                        >
+                          {isSelected ? '✓ Selected' : 'Query'}
                         </button>
                         <button type="button" className="danger-button" onClick={() => removeDocument(doc.id)}>
                           Remove
@@ -354,12 +445,18 @@ function App() {
           </div>
         </section>
 
+        {/* Clause Extraction */}
         <section className="panel panel-surface">
           <div className="panel-header">
             <div className="header-label">
               <span className="icon">🔎</span>
               <h2>Clause extraction</h2>
             </div>
+            {currentDocName && (
+              <span className="panel-subtext" title={currentDocName}>
+                Target: {currentDocName}
+              </span>
+            )}
           </div>
 
           {analysisStatus.text ? (
@@ -367,7 +464,7 @@ function App() {
           ) : null}
 
           {isRunningAnalysis ? (
-            <div className="loader-card">Running CUAD clause extraction…</div>
+            <div className="loader-card">Running CUAD clause extraction across 41 contract categories…</div>
           ) : null}
 
           {analysisResult && (
@@ -398,50 +495,237 @@ function App() {
           )}
         </section>
 
-        <section className="panel panel-surface">
-          <div className="panel-header">
+        {/* Enhanced Query & Intelligence Section */}
+        <section className="panel panel-surface query-intelligence-panel">
+          <div className="panel-header query-panel-header">
             <div className="header-label">
               <span className="icon">💬</span>
               <h2>Ask a question</h2>
             </div>
+            {selectedDocId && (
+              <div className="active-contract-badge">
+                <span className="pulse-indicator" />
+                <span className="active-doc-text" title={currentDocName || 'Active contract'}>
+                  {currentDocName || 'Contract'}
+                </span>
+                {documents.length > 1 && (
+                  <select
+                    className="doc-switcher-select"
+                    value={selectedDocId}
+                    onChange={(e) => {
+                      const doc = documents.find((d) => d.id === e.target.value);
+                      if (doc) {
+                        setSelectedDocId(doc.id);
+                        setCurrentDocName(doc.filename);
+                      }
+                    }}
+                    aria-label="Switch active document"
+                  >
+                    {documents.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.filename}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </div>
 
-          <form onSubmit={submitQuery} className="query-form">
-            <input
-              ref={queryInputRef}
-              type="text"
-              name="query"
-              placeholder="Ask about governing law, indemnity, or payment terms…"
-              disabled={!selectedDocId}
-            />
-            <button type="submit" className="primary-button" disabled={!selectedDocId || isQuerying}>
-              {isQuerying ? 'Querying…' : 'Ask'}
-            </button>
+          {/* Quick Legal Inquiries Chips */}
+          <div className="query-shortcuts">
+            <span className="shortcuts-label">Quick Legal Inquiries:</span>
+            <div className="shortcuts-pills">
+              {SUGGESTED_QUERIES.map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="shortcut-chip"
+                  disabled={!selectedDocId || isQuerying}
+                  onClick={() => runQuery(item.prompt)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Query Form Input */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              runQuery();
+            }}
+            className="smart-query-form"
+          >
+            <div className="search-bar-wrapper">
+              <span className="search-symbol">🔍</span>
+              <input
+                ref={queryInputRef}
+                type="text"
+                name="query"
+                value={queryText}
+                onChange={(e) => setQueryText(e.target.value)}
+                placeholder={
+                  selectedDocId
+                    ? `Ask about ${currentDocName || 'contract'} (e.g. governing law, liability cap, termination)…`
+                    : 'Select or upload a contract to ask questions…'
+                }
+                disabled={!selectedDocId || isQuerying}
+                className="smart-query-input"
+              />
+              {queryText && (
+                <button
+                  type="button"
+                  className="clear-input-btn"
+                  onClick={() => setQueryText('')}
+                  title="Clear input"
+                >
+                  ✕
+                </button>
+              )}
+              <button
+                type="submit"
+                className="query-submit-btn"
+                disabled={!selectedDocId || !queryText.trim() || isQuerying}
+              >
+                {isQuerying ? (
+                  <span className="btn-spinner-content">
+                    <span className="btn-spinner" /> Querying…
+                  </span>
+                ) : (
+                  <span>Ask ↵</span>
+                )}
+              </button>
+            </div>
           </form>
 
           {queryStatus.text ? (
             <div className={statusStyles[queryStatus.tone] || 'status'}>{queryStatus.text}</div>
           ) : null}
 
-          {queryResult && (
-            <div className="answer-card">
-              <div className="answer-header">
-                <span>Answer</span>
-                <span className="confidence-meter">{Math.round((queryResult.confidence || 0) * 100)}%</span>
+          {/* Shimmer Loading Skeleton */}
+          {isQuerying && (
+            <div className="query-skeleton-card">
+              <div className="skeleton-header">
+                <div className="skeleton-pulse-dot" />
+                <span className="skeleton-pulse-text">Searching semantic chunks and extracting exact clauses with RoBERTa…</span>
               </div>
-              <p className="answer-text">{queryResult.answer}</p>
+              <div className="skeleton-line shimmer full" />
+              <div className="skeleton-line shimmer medium" />
+              <div className="skeleton-line shimmer short" />
+            </div>
+          )}
 
-              <div className="source-row">
-                <strong>{currentDocName || 'Document'}</strong>
-                <span>{(queryResult.page_numbers || []).length ? `Pages: ${queryResult.page_numbers.join(', ')}` : 'Page references unavailable'}</span>
-              </div>
-
-              {queryResult.exact_evidence_text ? (
-                <div className="evidence-box">
-                  <span>Supporting clause</span>
-                  <p>“{queryResult.exact_evidence_text}”</p>
+          {/* Query Stream / History */}
+          {queryHistory.length > 0 && (
+            <div className="query-history-stream">
+              <div className="history-stream-header">
+                <div className="history-title-wrap">
+                  <span className="history-icon">📜</span>
+                  <h3>Session Query Stream ({queryHistory.length})</h3>
                 </div>
-              ) : null}
+                <button
+                  type="button"
+                  className="ghost-button clear-history-btn"
+                  onClick={() => {
+                    setQueryHistory([]);
+                    setQueryResult(null);
+                  }}
+                >
+                  Clear Stream
+                </button>
+              </div>
+
+              <div className="history-cards-container">
+                {queryHistory.map((item) => {
+                  const hasEvidence = Boolean(item.exact_evidence_text && (item.confidence || 0) > 0);
+                  const confidencePct = Math.round((item.confidence || 0) * 100);
+                  const confidenceTier = confidencePct >= 80 ? 'high' : confidencePct >= 50 ? 'medium' : 'low';
+                  const isCopiedAnswer = copiedKey === `ans-${item.id}`;
+                  const isCopiedEvidence = copiedKey === `ev-${item.id}`;
+
+                  return (
+                    <article key={item.id} className="query-history-card">
+                      <div className="q-card-top">
+                        <div className="q-badge-row">
+                          <span className="question-tag">Q</span>
+                          <strong className="question-text">{item.query}</strong>
+                        </div>
+                        <div className="q-meta-badges">
+                          {hasEvidence ? (
+                            <span className={`confidence-badge-pill ${confidenceTier}`} title={`Confidence: ${(item.confidence || 0).toFixed(4)}`}>
+                              {confidencePct}% Confidence
+                            </span>
+                          ) : (
+                            <span className="confidence-badge-pill not-specified" title="No matching clause found in document">
+                              Not in Contract
+                            </span>
+                          )}
+                          <span className="q-timestamp">{item.timestamp}</span>
+                        </div>
+                      </div>
+
+                      <div className="q-answer-container">
+                        <p className="q-answer-text">{item.answer}</p>
+                        <div className="q-actions-row">
+                          <button
+                            type="button"
+                            className={`copy-chip-btn ${isCopiedAnswer ? 'copied' : ''}`}
+                            onClick={() => copyToClipboard(item.answer, `ans-${item.id}`)}
+                          >
+                            {isCopiedAnswer ? '✓ Copied' : '📋 Copy Answer'}
+                          </button>
+                          {item.exact_evidence_text && (
+                            <button
+                              type="button"
+                              className={`copy-chip-btn ${isCopiedEvidence ? 'copied' : ''}`}
+                              onClick={() =>
+                                copyToClipboard(
+                                  `"${item.exact_evidence_text}" — Source: ${item.docName}${
+                                    (item.page_numbers || []).length ? `, Page ${item.page_numbers.join(', ')}` : ''
+                                  }`,
+                                  `ev-${item.id}`
+                                )
+                              }
+                            >
+                              {isCopiedEvidence ? '✓ Citation Copied' : '📑 Copy Citation'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {item.exact_evidence_text && (
+                        <div className="exact-evidence-card">
+                          <div className="evidence-header-bar">
+                            <span className="evidence-tag">
+                              <span className="evidence-icon">⚖</span> Verbatim Supporting Clause
+                            </span>
+                            <div className="evidence-source-pill">
+                              <span>{item.docName}</span>
+                              {(item.page_numbers || []).length > 0 && (
+                                <span className="page-pill">Page {item.page_numbers.join(', ')}</span>
+                              )}
+                            </div>
+                          </div>
+                          <blockquote className="evidence-quote">
+                            “{item.exact_evidence_text}”
+                          </blockquote>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!queryHistory.length && !isQuerying && (
+            <div className="query-empty-hint">
+              <span className="hint-icon">💡</span>
+              <p>
+                Select a quick legal question above or type your own prompt to extract direct answers with supporting verbatim contract clauses and verified confidence scores.
+              </p>
             </div>
           )}
         </section>
