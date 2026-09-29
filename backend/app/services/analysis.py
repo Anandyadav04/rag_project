@@ -108,6 +108,37 @@ class AnalysisService:
             
         return extracted
         
+    QUERY_CATEGORY_MAP = {
+        "governing law": "Governing Law",
+        "jurisdiction": "Governing Law",
+        "liability cap": "Cap On Liability",
+        "limitation of liability": "Cap On Liability",
+        "termination": "Termination For Convenience",
+        "terminate": "Termination For Convenience",
+        "renewal": "Renewal Term",
+        "non-renewal": "Notice Period To Terminate Renewal",
+        "audit": "Audit Rights",
+        "non-compete": "Non-Compete",
+        "solicit": "No-Solicit Of Customers",
+        "assignment": "Anti-Assignment",
+        "warranty": "Warranty Duration",
+        "insurance": "Insurance"
+    }
+
+    GENERIC_CONTRACT_WORDS = {
+        "what", "is", "the", "of", "in", "to", "a", "an", "are", "was",
+        "were", "be", "been", "being", "have", "has", "had", "do", "does",
+        "did", "will", "would", "could", "should", "may", "might", "can",
+        "shall", "on", "for", "by", "with", "from", "at", "or", "and",
+        "not", "this", "that", "it", "its", "as", "who", "which", "there",
+        "their", "they", "them", "his", "her", "he", "she", "how", "many",
+        "term", "terms", "agreement", "contract", "party", "parties",
+        "section", "clause", "provision", "provisions", "herein", "thereof",
+        "days", "written", "notice", "effective", "date", "period",
+        "obligation", "obligations", "right", "rights", "condition", "conditions",
+        "remedy", "remedies", "under", "about", "describe", "specify"
+    }
+
     def query_document(self, db: Session, document_id: str, query: str):
         """
         Queries a specific document and returns a specific answer using RAG + CUAD.
@@ -120,28 +151,51 @@ class AnalysisService:
             top_k=5
         )
 
+        if not top_chunks:
+            return {
+                "answer": "No supporting evidence found in the document.",
+                "exact_evidence_text": "",
+                "page_numbers": [],
+                "supporting_chunk_ids": [],
+                "confidence": 0.0
+            }
+
+        # Check if category prompt should be used
+        cuad_prompt = None
+        q_lower = query.lower()
+        for phrase, cat in self.QUERY_CATEGORY_MAP.items():
+            if phrase in q_lower:
+                cuad_prompt = CUAD_CATEGORIES.get(cat)
+                break
+
         best_answer = None
         best_chunk = None
 
         for chunk in top_chunks:
-            # Use the user's actual question directly
-            answer_result = cuad_service.extract_answer(
-                question=query,
-                context=chunk.text
-            )
+            prompts = [cuad_prompt, query] if cuad_prompt else [query]
+            for p in prompts:
+                ans = cuad_service.extract_answer(p, chunk.text)
+                if (
+                    ans
+                    and ans.get("score", 0) > 0.2
+                    and ans.get("answer", "").strip()
+                    and self._is_cuad_answer_relevant(query, ans["answer"])
+                ):
+                    if not best_answer or ans["score"] > best_answer["score"]:
+                        best_answer = ans
+                        best_chunk = chunk
 
-            if (
-                answer_result
-                and answer_result.get("score", 0) > 0.2
-                and answer_result.get("answer", "").strip()
-                and (
-                    answer_result.get("score", 0) > 0.4
-                    or self._is_cuad_answer_relevant(query, answer_result["answer"])
-                )
-            ):
-                if not best_answer or answer_result["score"] > best_answer["score"]:
-                    best_answer = answer_result
-                    best_chunk = chunk
+        # Fallback: check if any sentence in top chunks is strictly relevant
+        if not best_answer:
+            for chunk in top_chunks:
+                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', chunk.text) if s.strip()]
+                for s in sentences:
+                    if len(s) > 20 and self._is_cuad_answer_relevant(query, s):
+                        best_answer = {"answer": s, "score": 0.85}
+                        best_chunk = chunk
+                        break
+                if best_answer:
+                    break
 
         chunks_text = "\n\n".join([chunk.text for chunk in top_chunks])
 
@@ -159,79 +213,28 @@ class AnalysisService:
                 "confidence": best_answer["score"]
             }
 
-        # Safe fallback: extract most relevant sentence from top chunk
-        if top_chunks:
-            top_chunk = top_chunks[0]
-            fallback_answer = self._extract_most_relevant_sentence(top_chunk.text, query)
-            llm_answer = llm_service.generate_legal_answer(
-                query=query, 
-                exact_evidence=fallback_answer,
-                chunks_text=chunks_text
-            )
-            return {
-                "answer": llm_answer,
-                "exact_evidence_text": fallback_answer,
-                "page_numbers": [top_chunk.page_number] if top_chunk.page_number else [],
-                "supporting_chunk_ids": [top_chunk.id],
-                "confidence": 0.35
-            }
-
+        # If not present in the document, Gemini will explain the absence
+        llm_answer = llm_service.generate_legal_answer(
+            query=query, 
+            exact_evidence="",
+            chunks_text=chunks_text
+        )
         return {
-            "answer": "No supporting evidence found in the document.",
+            "answer": llm_answer,
             "exact_evidence_text": "",
             "page_numbers": [],
             "supporting_chunk_ids": [],
             "confidence": 0.0
         }
 
-    def _extract_most_relevant_sentence(self, text: str, query: str) -> str:
-        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
-        if not sentences:
-            return text[:500]
-
-        cleaned_query = re.sub(r'[^a-z0-9\s]', ' ', query.lower())
-        query_terms = {t for t in cleaned_query.split() if t not in self.STOPWORDS and len(t) > 2}
-
-        if not query_terms:
-            return sentences[0]
-
-        best_sentence = sentences[0]
-        best_score = -1
-
-        for sentence in sentences:
-            cleaned_s = re.sub(r'[^a-z0-9\s]', ' ', sentence.lower())
-            s_terms = {t for t in cleaned_s.split() if t not in self.STOPWORDS and len(t) > 2}
-
-            # Stem / prefix matching (e.g., 'governing' matches 'governed')
-            overlap = 0
-            for qt in query_terms:
-                stem = qt[:4] if len(qt) >= 4 else qt
-                if any(st.startswith(stem) or stem in st for st in s_terms):
-                    overlap += 1
-
-            if overlap > best_score:
-                best_score = overlap
-                best_sentence = sentence
-
-        return best_sentence.strip()
-
-    STOPWORDS = {
-        "what", "is", "the", "of", "in", "to", "a", "an", "are", "was",
-        "were", "be", "been", "being", "have", "has", "had", "do", "does",
-        "did", "will", "would", "could", "should", "may", "might", "can",
-        "shall", "on", "for", "by", "with", "from", "at", "or", "and",
-        "not", "this", "that", "it", "its", "as", "who", "which", "there",
-        "their", "they", "them", "his", "her", "he", "she", "how", "many"
-    }
-
     def _is_cuad_answer_relevant(self, query: str, answer: str) -> bool:
         cleaned_query = re.sub(r'[^a-z0-9\s]', ' ', query.lower())
         cleaned_ans = re.sub(r'[^a-z0-9\s]', ' ', answer.lower())
 
-        query_terms = {t for t in cleaned_query.split() if t not in self.STOPWORDS and len(t) > 2}
-        answer_terms = {t for t in cleaned_ans.split() if t not in self.STOPWORDS and len(t) > 2}
+        query_terms = {t for t in cleaned_query.split() if t not in self.GENERIC_CONTRACT_WORDS and len(t) > 2}
+        answer_terms = {t for t in cleaned_ans.split() if t not in self.GENERIC_CONTRACT_WORDS and len(t) > 2}
 
-        if not query_terms or not answer_terms:
+        if not query_terms:
             return True
 
         # Stem / prefix matching
