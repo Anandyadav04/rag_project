@@ -60,7 +60,7 @@ class AnalysisService:
         # Ensure we don't duplicate extraction
         existing = db.query(ExtractedClause).filter(ExtractedClause.document_id == document_id).first()
         if existing:
-            # We can optionally clear old extractions
+            # Clear old extractions
             db.query(ExtractedClause).filter(ExtractedClause.document_id == document_id).delete()
             db.commit()
             
@@ -74,11 +74,16 @@ class AnalysisService:
             best_chunk = None
             
             for chunk in top_chunks:
-                # 2. Extract answer using CUAD RoBERTa
+                # 2. Extract answer using context-constrained CUAD RoBERTa
                 answer_result = cuad_service.extract_answer(question=question, context=chunk.text)
                 
-                # Minimum confidence threshold
-                if answer_result and answer_result.get('score', 0) > 0.1 and answer_result.get('answer', '').strip():
+                # Check confidence: diff > 0.3 means span is more likely than null CLS answer
+                if (
+                    answer_result
+                    and answer_result.get('score', 0) > 0.25
+                    and answer_result.get('diff', 0) > 0.3
+                    and answer_result.get('answer', '').strip()
+                ):
                     if not best_answer or answer_result['score'] > best_answer['score']:
                         best_answer = answer_result
                         best_chunk = chunk
@@ -127,10 +132,12 @@ class AnalysisService:
 
             if (
                 answer_result
-                and answer_result.get("score", 0) > 0.05
+                and answer_result.get("score", 0) > 0.2
                 and answer_result.get("answer", "").strip()
-                and answer_result["answer"].strip().lower() in chunk.text.lower()
-                and self._is_cuad_answer_relevant(query, answer_result["answer"])
+                and (
+                    answer_result.get("score", 0) > 0.4
+                    or self._is_cuad_answer_relevant(query, answer_result["answer"])
+                )
             ):
                 if not best_answer or answer_result["score"] > best_answer["score"]:
                     best_answer = answer_result
@@ -166,7 +173,7 @@ class AnalysisService:
                 "exact_evidence_text": fallback_answer,
                 "page_numbers": [top_chunk.page_number] if top_chunk.page_number else [],
                 "supporting_chunk_ids": [top_chunk.id],
-                "confidence": 0.01
+                "confidence": 0.35
             }
 
         return {
@@ -178,17 +185,30 @@ class AnalysisService:
         }
 
     def _extract_most_relevant_sentence(self, text: str, query: str) -> str:
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
         if not sentences:
             return text[:500]
 
-        query_terms = set(query.lower().split())
+        cleaned_query = re.sub(r'[^a-z0-9\s]', ' ', query.lower())
+        query_terms = {t for t in cleaned_query.split() if t not in self.STOPWORDS and len(t) > 2}
+
+        if not query_terms:
+            return sentences[0]
+
         best_sentence = sentences[0]
-        best_score = 0
+        best_score = -1
 
         for sentence in sentences:
-            sentence_terms = set(sentence.lower().split())
-            overlap = len(query_terms & sentence_terms)
+            cleaned_s = re.sub(r'[^a-z0-9\s]', ' ', sentence.lower())
+            s_terms = {t for t in cleaned_s.split() if t not in self.STOPWORDS and len(t) > 2}
+
+            # Stem / prefix matching (e.g., 'governing' matches 'governed')
+            overlap = 0
+            for qt in query_terms:
+                stem = qt[:4] if len(qt) >= 4 else qt
+                if any(st.startswith(stem) or stem in st for st in s_terms):
+                    overlap += 1
+
             if overlap > best_score:
                 best_score = overlap
                 best_sentence = sentence
@@ -201,21 +221,26 @@ class AnalysisService:
         "did", "will", "would", "could", "should", "may", "might", "can",
         "shall", "on", "for", "by", "with", "from", "at", "or", "and",
         "not", "this", "that", "it", "its", "as", "who", "which", "there",
-        "their", "they", "them", "his", "her", "he", "she"
+        "their", "they", "them", "his", "her", "he", "she", "how", "many"
     }
 
     def _is_cuad_answer_relevant(self, query: str, answer: str) -> bool:
-        query_terms = {t for t in re.sub(r"[^a-z0-9\s]", " ", query.lower()).split()
-                       if t not in self.STOPWORDS and len(t) > 2}
-        answer_terms = {t for t in re.sub(r"[^a-z0-9\s]", " ", answer.lower()).split()
-                        if t not in self.STOPWORDS and len(t) > 2}
+        cleaned_query = re.sub(r'[^a-z0-9\s]', ' ', query.lower())
+        cleaned_ans = re.sub(r'[^a-z0-9\s]', ' ', answer.lower())
+
+        query_terms = {t for t in cleaned_query.split() if t not in self.STOPWORDS and len(t) > 2}
+        answer_terms = {t for t in cleaned_ans.split() if t not in self.STOPWORDS and len(t) > 2}
 
         if not query_terms or not answer_terms:
-            return False
+            return True
 
-        overlap = len(query_terms & answer_terms)
-        partial = overlap / len(query_terms)
+        # Stem / prefix matching
+        overlap = 0
+        for qt in query_terms:
+            stem = qt[:4] if len(qt) >= 4 else qt
+            if any(at.startswith(stem) or stem in at for at in answer_terms):
+                overlap += 1
 
-        return overlap >= 2 or partial >= 0.5
+        return overlap >= 1
 
 analysis_service = AnalysisService()
